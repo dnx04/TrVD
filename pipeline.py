@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import copy
 import pandas as pd
@@ -14,11 +16,10 @@ def parse_options():
     return args
 
 
-def parse_ast(source):
-    # C_LANGUAGE = Language('build_languages/my-languages.so', 'c')
-    CPP_LANGUAGE = Language('build_languages/my-languages.so', 'cpp')
-    parser = Parser()
-    parser.set_language(CPP_LANGUAGE)  # set the parser for certain language
+def parse_ast(source: str) -> object:
+    CPP_LANGUAGE = Language('build_languages/my-languages.so', 'cpp')  # type: ignore[arg-type]
+    parser = Parser()  # type: ignore[operator]
+    parser.set_language(CPP_LANGUAGE)  # type: ignore[operator]
     tree = parser.parse(source.encode('utf-8').decode('unicode_escape').encode())
     return tree
 
@@ -57,9 +58,10 @@ class Pipeline:
 
 
     # construct dictionary and train word embedding
-    def dictionary_and_embedding(self, size):
+    def dictionary_and_embedding(self, size: int) -> None:
         self.size = size
         trees = self.train
+        assert trees is not None, "parse_source() must be called before dictionary_and_embedding()"
         self.w2v_path = 'subtrees/'+args.input+'/node_w2v_'+str(size)
         if not os.path.exists('subtrees/'+args.input):
             os.mkdir('subtrees/'+args.input)
@@ -85,7 +87,7 @@ class Pipeline:
             # training word2vec model
             from gensim.models.word2vec import Word2Vec
             print('corpus size: ', len(corpus))
-            w2v = Word2Vec(corpus, size=size, workers=96, sg=1, min_count=3)
+            w2v = Word2Vec(corpus, vector_size=size, workers=96, sg=1, min_count=3)
             print('word2vec : ', w2v)
             w2v.save(self.w2v_path)
 
@@ -130,14 +132,14 @@ class Pipeline:
         return trans2seq(data)
 
     # generate block sequences with index representations
-    def generate_block_seqs(self, data, name: str):
-        blocks_path = None
+    def generate_block_seqs(self, data, name: str) -> pd.DataFrame:
+        blocks_path: str
         if name == 'train':
-            blocks_path = 'subtrees/'+args.input+'/train_block.pkl'
+            blocks_path = 'subtrees/' + args.input + '/train_block.pkl'
         elif name == 'test':
-            blocks_path = 'subtrees/'+args.input+'/test_block.pkl'
-        elif name == 'dev':
-            blocks_path = 'subtrees/'+args.input+'/dev_block.pkl'
+            blocks_path = 'subtrees/' + args.input + '/test_block.pkl'
+        else:
+            blocks_path = 'subtrees/' + args.input + '/dev_block.pkl'
 
         from prepare_data import get_blocks as func
         from gensim.models.word2vec import Word2Vec

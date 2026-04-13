@@ -5,7 +5,6 @@ import torch
 import numpy as np
 from gensim.models.word2vec import Word2Vec
 from model import BatchProgramClassifier
-from torch.autograd import Variable
 
 
 def parse_options():
@@ -28,17 +27,15 @@ def get_batch(dataset, idx, bs):
 
 def evaluate_multi(all_pred, all_labels):
 
-    from sklearn import metrics
-    import sklearn
+    from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, f1_score, recall_score
 
-    confusion = metrics.confusion_matrix(y_true=all_labels, y_pred=all_pred)
-    # print('Confusion matrix: \n', confusion)
+    confusion_matrix(y_true=all_labels, y_pred=all_pred)
 
     ## Performance measure
-    print('\nAccuracy: '+ str(sklearn.metrics.accuracy_score(y_true=all_labels, y_pred=all_pred)))
-    print('Precision: '+ str(sklearn.metrics.precision_score(y_true=all_labels, y_pred=all_pred, average='weighted')))
-    print('F-measure: '+ str(sklearn.metrics.f1_score(y_true=all_labels, y_pred=all_pred, average='weighted')))
-    print('Recall: '+ str(sklearn.metrics.recall_score(y_true=all_labels, y_pred=all_pred, average='weighted')))
+    print('\nAccuracy: ' + str(accuracy_score(y_true=all_labels, y_pred=all_pred)))
+    print('Precision: ' + str(precision_score(y_true=all_labels, y_pred=all_pred, average='weighted')))
+    print('F-measure: ' + str(f1_score(y_true=all_labels, y_pred=all_pred, average='weighted')))
+    print('Recall: ' + str(recall_score(y_true=all_labels, y_pred=all_pred, average='weighted')))
 
 
 def evaluation():
@@ -66,11 +63,11 @@ def evaluation():
                                    device, USE_GPU, embeddings)
     loss_function = torch.nn.CrossEntropyLoss()
 
-    total_acc = 0.0
-    total_loss = 0.0
-    total = 0.0
+    total_acc = torch.tensor(0.0)
+    total_loss: float = 0.0
+    total = 0
     i = 0
-    model.load_state_dict(torch.load('./saved_model/best_' + args.input + '.pt', map_location='cuda'))
+    model.load_state_dict(torch.load('./saved_model/best_' + args.input + '.pt', map_location=device))
     model.to(device)
     model.eval()
     print(device)
@@ -86,7 +83,7 @@ def evaluation():
             test_inputs, test_labels = test_inputs, test_labels.to(device)
         model.batch_size = len(test_labels)
         output = model(test_inputs)
-        loss = loss_function(output, Variable(test_labels))
+        loss = loss_function(output, test_labels)
         _, predicted = torch.max(output.data, 1)
         total_acc += (predicted == test_labels).sum()
         all_labels += test_labels.tolist()

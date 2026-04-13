@@ -15,20 +15,19 @@ class ASTNode(object):
         else:
             return len(self.node.root_node.children) == 0
 
-    def get_token(self, lower=True):
+    def get_token(self) -> str | bytes:
         if not isinstance(self.node, tree_sitter.Tree):
             token = self.node.type
             if self.is_leaf:
                 token = self.node.text
-            return token
+            return token  # type: ignore[return-value]
         else:
             token = self.node.root_node.type
             if self.is_leaf:
                 token = self.node.root_node.text
-            return token
+            return token  # type: ignore[return-value]
 
     def add_children(self):
-        from prepare_data import needsSplitting
         if self.is_leaf:
             return []
         children = self.node.children
@@ -49,10 +48,6 @@ class ASTNode(object):
                 return [ASTNode(child, self.do_split) for child in children]
 
 
-    def children(self):
-        return self.children
-
-
 class SingleNode(ASTNode):
     def __init__(self, node):
         self.node = node
@@ -67,14 +62,14 @@ class SingleNode(ASTNode):
         else:
             return len(self.node.root_node.children) == 0
 
-    def get_token(self, lower=True):
+    def get_token(self) -> str | bytes:
         if not isinstance(self.node, tree_sitter.Tree):
             token = self.node.type
             if self.is_leaf:
                 token = self.node.text
-            return token
+            return token  # type: ignore[return-value]
         else:
             token = self.node.root_node.type
             if self.is_leaf:
                 token = self.node.root_node.text
-            return token
+            return token  # type: ignore[return-value]

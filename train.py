@@ -7,7 +7,6 @@ import time
 import numpy as np
 from gensim.models.word2vec import Word2Vec
 from model import BatchProgramClassifier
-from torch.autograd import Variable
 
 def parse_options():
     parser = argparse.ArgumentParser(description='TrVD training.')
@@ -101,7 +100,7 @@ if __name__ == '__main__':
             model.batch_size = len(train_labels)
             model.hidden = model.init_hidden()
             output = model(train_inputs)
-            loss = loss_function(output, Variable(train_labels))
+            loss = loss_function(output, train_labels)
             loss.backward()
             optimizer.step()
             # calc training acc
@@ -138,7 +137,7 @@ if __name__ == '__main__':
                 model.batch_size = len(test_labels)
                 output = model(test_inputs)
 
-                loss = loss_function(output, Variable(test_labels))
+                loss = loss_function(output, test_labels)
                 _, predicted = torch.max(output.data, 1)
                 total_acc += (predicted == test_labels).sum()
                 all_labels += test_labels.tolist()

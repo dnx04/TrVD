@@ -170,7 +170,7 @@ def clean_gadget(gadget):
     var_count = 1
 
     # regular expression to catch multi-line comment
-    rx_comment = re.compile('\*/\s*$')
+    rx_comment = re.compile(r'\*/\s*$')
     # regular expression to find d2a name candidates
     rx_fun = re.compile(r'\b([_A-Za-z]\w*)\b(?=\s*\()')
     # regular expression to find variable name candidates
