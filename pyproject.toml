@@ -1,0 +1,19 @@
+[project]
+name = "trvd"
+version = "0.1.0"
+description = "Deep Semantic Extraction via AST Decomposition for Vulnerability Detection"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=1.8.0,<2.0",
+    "tree-sitter>=0.20.0",
+    "gensim>=4.0.0,<5.0",
+    "pandas>=1.1.0,<3.0",
+    "numpy>=1.19.0,<2.0",
+    "scikit-learn>=0.24.0,<1.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+]
