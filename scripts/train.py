@@ -16,7 +16,7 @@ def parse_options():
                         help='Dataset name (subfolder under subtrees/)', type=str)
     parser.add_argument('-m', '--model', default='rvnn-att', choices=['rvnn-att'],
                         type=str, required=False, help='sub-tree model type')
-    parser.add_argument('-d', '--device', default='cuda', choices=['cuda', 'cpu'],
+    parser.add_argument('-d', '--device', default='cuda',
                         type=str, required=False, help='Device (default: cuda)')
     parser.add_argument('-e', '--epochs', default=100,
                         help='Number of training epochs (default: 100)', type=int)
@@ -58,7 +58,7 @@ if __name__ == '__main__':
     USE_GPU = True
     MAX_TOKENS = word2vec.vectors.shape[0]
     EMBEDDING_DIM = word2vec.vectors.shape[1]
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")
     print(device)
     print('dataset:', args.input)
     model = BatchProgramClassifier(EMBEDDING_DIM, MAX_TOKENS + 1, ENCODE_DIM, LABELS, BATCH_SIZE,
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     parameters = model.parameters()
     optimizer = torch.optim.Adamax(parameters, lr=0.001)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 10, gamma=0.8)
-    loss_function = torch.nn.CrossEntropyLoss()
+    loss_function = torch.nn.CrossEntropyLoss().to(device)
 
     best_val_loss = float("inf")
     best_val_acc = 0.0
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     num_batches = (len(train_data) + BATCH_SIZE - 1) // BATCH_SIZE
     for epoch in range(EPOCHS):
         start_time = time.time()
-        total_acc = torch.tensor(0.0)
+        total_acc = torch.tensor(0.0).to(device)
         total_loss = 0.0
         total = 0.0
         model.train()
@@ -130,7 +130,7 @@ if __name__ == '__main__':
             end_time = time.time()
             all_labels = []
             all_preds = []
-            total_acc = torch.tensor(0.0)
+            total_acc = torch.tensor(0.0).to(device)
             total_loss = 0.0
             total = 0.0
             model.eval()

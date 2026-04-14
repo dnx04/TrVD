@@ -94,7 +94,7 @@ uv run python -m scripts.train -i trvd
 |----------|---------|-------------|
 | `-i, --input` | — | Dataset name (subfolder under `subtrees/`) |
 | `-m, --model` | `rvnn-att` | Model type |
-| `-d, --device` | `cuda` | Device (`cuda` or `cpu`) |
+| `-d, --device` | `cuda` | Device |
 | `-e, --epochs` | `100` | Number of training epochs |
 | `-p, --patience` | `5` | Early stopping patience |
 

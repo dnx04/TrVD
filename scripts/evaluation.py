@@ -55,14 +55,13 @@ def evaluation():
     USE_GPU = True
     MAX_TOKENS = word2vec.vectors.shape[0]
     EMBEDDING_DIM = word2vec.vectors.shape[1]
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # device = 'cpu'
+    device = torch.device("cuda")
 
     model = BatchProgramClassifier(EMBEDDING_DIM, MAX_TOKENS + 1, ENCODE_DIM, LABELS, BATCH_SIZE,
                                    device, USE_GPU, embeddings)
-    loss_function = torch.nn.CrossEntropyLoss()
+    loss_function = torch.nn.CrossEntropyLoss().to(device)
 
-    total_acc = torch.tensor(0.0)
+    total_acc = torch.tensor(0.0).to(device)
     total_loss: float = 0.0
     total = 0
     i = 0
