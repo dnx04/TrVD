@@ -12,12 +12,13 @@ import os
 import re
 
 import pandas as pd
+from tqdm import tqdm
 from src.clean_gadget import clean_gadget
 
 
 def normalization(source):
     nor_code = []
-    for fun in source["code"]:
+    for fun in tqdm(source["code"], desc=f"Normalizing"):
         lines = fun.split("\n")
         code = ""
         for line in lines:
@@ -68,7 +69,7 @@ def main():
             print(f"  SKIP {split}.pkl (not found)")
             continue
         df = pd.read_pickle(src)
-        print(f"  Normalizing {split}.pkl ({len(df)} samples)...")
+        print(f"\n[{split}] Normalizing {len(df)} samples...")
         df["code"] = normalization(df)
         os.makedirs(output_dir, exist_ok=True)
         df.to_pickle(dst)
