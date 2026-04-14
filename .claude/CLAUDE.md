@@ -22,7 +22,7 @@ uv run python scripts/split_dataset.py -i dataset/dataset.pkl -o ./dataset/trvd
 uv run python -m src.pipeline --input trvd --output subtrees/trvd
 
 # Train model
-uv run python scripts/train.py
+uv run python -m scripts.train
 
 # Evaluate on test set
 uv run python scripts/evaluation.py

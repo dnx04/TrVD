@@ -85,7 +85,7 @@ subtrees/trvd/
 ## Train
 
 ```bash
-uv run python scripts/train.py
+uv run python -m scripts.train
 ```
 
 **Arguments:**
@@ -103,7 +103,7 @@ Checkpoints saved to:
 ## Evaluate
 
 ```bash
-uv run python scripts/evaluation.py
+uv run python -m scripts.evaluation
 ```
 
 Outputs accuracy, precision, recall, and F1-score across all 86 classes.

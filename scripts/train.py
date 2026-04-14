@@ -11,13 +11,12 @@ from src.model import BatchProgramClassifier
 
 def parse_options():
     parser = argparse.ArgumentParser(description='TrVD training.')
-    parser.add_argument('-i', '--input', default='mutrvd', choices='mutrvd',
-                        help='training dataset type', type=str, required=False)
-    parser.add_argument('-m', '--model', default='rvnn-att', choices='rvnn-att',
+    parser.add_argument('-i', '--input', default='trvd',
+                        help='Dataset name (subfolder under subtrees/)', type=str, required=True)
+    parser.add_argument('-m', '--model', default='rvnn-att', choices=['rvnn-att'],
                         type=str, required=False, help='sub-tree model type')
-
-    parser.add_argument('-d', '--device', default='cuda', choices='cuda, cuda:1, cuda:2',
-                        type=str, required=False, help='GPU')
+    parser.add_argument('-d', '--device', default='cuda', choices=['cuda', 'cpu'],
+                        type=str, required=False, help='Device (default: cuda)')
     args = parser.parse_args()
     return args
 

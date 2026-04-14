@@ -9,10 +9,9 @@ from src.model import BatchProgramClassifier
 
 
 def parse_options():
-    parser = argparse.ArgumentParser(description='TrVD training.')
-    parser.add_argument('-i', '--input', default='mutrvd',
-                        choices='mutrvd',
-                        help='training dataset type', type=str, required=False)
+    parser = argparse.ArgumentParser(description='TrVD evaluation.')
+    parser.add_argument('-i', '--input', default='trvd',
+                        help='Dataset name (subfolder under subtrees/)', type=str, required=True)
     args = parser.parse_args()
     return args
 
