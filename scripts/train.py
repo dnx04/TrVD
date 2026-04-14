@@ -6,6 +6,7 @@ import torch
 import time
 import numpy as np
 from gensim.models.word2vec import Word2Vec
+from tqdm import tqdm
 from src.model import BatchProgramClassifier
 
 def parse_options():
@@ -80,17 +81,16 @@ if __name__ == '__main__':
     best_acc = 0.0
     print('Start training...')
     # training procedure
+    num_batches = (len(train_data) + BATCH_SIZE - 1) // BATCH_SIZE
     for epoch in range(EPOCHS):
         start_time = time.time()
         total_acc = torch.tensor(0.0)
         total_loss = 0.0
         total = 0.0
-        i = 0
         model.train()
-        while i < len(train_data):
-            batch = get_batch(train_data, i, BATCH_SIZE)
-            i += BATCH_SIZE
-            train_inputs, train_labels = batch
+        pbar = tqdm(range(0, len(train_data), BATCH_SIZE), desc=f"Epoch {epoch+1}/{EPOCHS}", leave=False)
+        for i in pbar:
+            train_inputs, train_labels = get_batch(train_data, i, BATCH_SIZE)
             if USE_GPU:
                 train_inputs, train_labels = train_inputs, train_labels.to(device)
             if len(train_labels) < BATCH_SIZE:
@@ -120,12 +120,9 @@ if __name__ == '__main__':
             total_acc = torch.tensor(0.0)
             total_loss = 0.0
             total = 0.0
-            i = 0
             model.eval()
-            while i < len(val_data):
-                batch = get_batch(val_data, i, BATCH_SIZE)
-                i += BATCH_SIZE
-                test_inputs, test_labels = batch
+            for i in tqdm(range(0, len(val_data), BATCH_SIZE), desc=f"Val", leave=False):
+                test_inputs, test_labels = get_batch(val_data, i, BATCH_SIZE)
                 if USE_GPU:
                     test_inputs, test_labels = test_inputs, test_labels.to(device)
 
@@ -144,7 +141,7 @@ if __name__ == '__main__':
                 total += len(test_labels)
                 total_loss += loss.item() * len(test_inputs)
 
-            from evaluation import  evaluate_multi
+            from scripts.evaluation import evaluate_multi
             evaluate_multi(all_preds, all_labels)
 
             torch.save(model.state_dict(), model_path + '/model_'+str(epoch+1)+'.pt')

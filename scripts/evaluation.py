@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 import numpy as np
 from gensim.models.word2vec import Word2Vec
+from tqdm import tqdm
 from src.model import BatchProgramClassifier
 
 
@@ -74,10 +75,8 @@ def evaluation():
 
     all_labels = []
     all_preds = []
-    while i < len(test_data):
-        batch = get_batch(test_data, i, BATCH_SIZE)
-        i += BATCH_SIZE
-        test_inputs, test_labels = batch
+    for i in tqdm(range(0, len(test_data), BATCH_SIZE), desc="Evaluating"):
+        test_inputs, test_labels = get_batch(test_data, i, BATCH_SIZE)
         if USE_GPU:
             test_inputs, test_labels = test_inputs, test_labels.to(device)
         model.batch_size = len(test_labels)

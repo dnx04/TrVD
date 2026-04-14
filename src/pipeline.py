@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import copy
-import pandas as pd
 import os
 
+import pandas as pd
+from tqdm import tqdm
 from tree_sitter import Language, Parser
 import tree_sitter_cpp as tspp
 from src.prepare_data import get_root_paths
@@ -48,14 +49,17 @@ class Pipeline:
         test = pd.read_pickle(os.path.join(data_dir, 'test.pkl'))
         dev = pd.read_pickle(os.path.join(data_dir, 'val.pkl'))
 
-        # parsing source source into ast
-        train['code'] = train['code'].apply(parse_ast)
+        # parsing source into ast
+        print("Parsing train...")
+        train['code'] = [parse_ast(c) for _, c in tqdm(train['code'].items(), total=len(train))]
         self.train = train
         self.train_keep = copy.deepcopy(train)
-        dev['code'] = dev['code'].apply(parse_ast)
+        print("Parsing dev...")
+        dev['code'] = [parse_ast(c) for _, c in tqdm(dev['code'].items(), total=len(dev))]
         self.dev = dev
         self.dev_keep = copy.deepcopy(dev)
-        test['code'] = test['code'].apply(parse_ast)
+        print("Parsing test...")
+        test['code'] = [parse_ast(c) for _, c in tqdm(test['code'].items(), total=len(test))]
         self.test = test
         self.test_keep = copy.deepcopy(test)
 
@@ -80,7 +84,8 @@ class Pipeline:
             return paths
         # train word2vec embedding if not exists
         if not os.path.exists(self.w2v_path):
-            corpus = trees['code'].apply(trans_to_sequences)
+            print("Collecting root-to-leaf paths for Word2Vec...")
+            corpus = [trans_to_sequences(ast) for _, ast in tqdm(trees['code'].items(), total=len(trees))]
             paths = []
             for all_paths in corpus:
                 for path in all_paths:
@@ -93,46 +98,6 @@ class Pipeline:
             w2v = Word2Vec(corpus, vector_size=size, workers=96, sg=1, min_count=3)
             print('word2vec : ', w2v)
             w2v.save(self.w2v_path)
-
-    def generate_block_seqs_time(self, data):
-        from src.prepare_data import get_blocks as func
-        from gensim.models.word2vec import Word2Vec
-        word2vec = Word2Vec.load(self.w2v_path).wv
-        vocab = word2vec.vocab
-        max_token = word2vec.vectors.shape[0]
-
-        def tree_to_index(node):
-            token = node.token
-            if type(token) is bytes:
-                token = token.decode('utf-8')
-            result = [vocab[token].index if token in vocab else max_token]
-            children = node.children
-            for child in children:
-                result.append(tree_to_index(child))
-            return result
-
-        def tree_to_token(node):
-            token = node.token
-            if type(token) is bytes:
-                token = token.decode('utf-8')
-            result = [token]
-            children = node.children
-            for child in children:
-                result.append(tree_to_token(child))
-            return result
-
-        def trans2seq(r):
-            blocks = []
-            func(r, blocks)
-            tree = []
-            for b in blocks:
-                btree = tree_to_index(b)
-                token_tree = tree_to_token(b)
-                print(token_tree)
-                tree.append(btree)
-            return tree
-
-        return trans2seq(data)
 
     # generate block sequences with index representations
     def generate_block_seqs(self, data, name: str) -> pd.DataFrame:
@@ -176,13 +141,12 @@ class Pipeline:
             tree = []
             for b in blocks:
                 btree = tree_to_index(b)
-                token_tree = tree_to_token(b)
-                print(token_tree)
                 tree.append(btree)
             return tree
 
         trees = data
-        trees['code'] = trees['code'].apply(trans2seq)
+        print(f"Generating block sequences ({name})...")
+        trees['code'] = [trans2seq(c) for _, c in tqdm(trees['code'].items(), total=len(trees))]
         trees.to_pickle(blocks_path)
         return trees
 
