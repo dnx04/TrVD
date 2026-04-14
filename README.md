@@ -85,16 +85,18 @@ subtrees/trvd/
 ## Train
 
 ```bash
-uv run python -m scripts.train
+uv run python -m scripts.train -i trvd
 ```
 
 **Arguments:**
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `-i, --input` | `trvd` | Dataset name (subfolder under `subtrees/`) |
+| `-i, --input` | — | Dataset name (subfolder under `subtrees/`) |
 | `-m, --model` | `rvnn-att` | Model type |
-| `-d, --device` | `cuda` | Device (`cuda`, `cuda:1`, `cuda:2`, or `cpu`) |
+| `-d, --device` | `cuda` | Device (`cuda` or `cpu`) |
+| `-e, --epochs` | `100` | Number of training epochs |
+| `-p, --patience` | `5` | Early stopping patience |
 
 Checkpoints saved to:
 - `saved_model/trvd/rvnn-att/model_<epoch>.pt` — per-epoch snapshots
@@ -103,10 +105,16 @@ Checkpoints saved to:
 ## Evaluate
 
 ```bash
-uv run python -m scripts.evaluation
+uv run python -m scripts.evaluation -i trvd
 ```
 
 Outputs accuracy, precision, recall, and F1-score across all 86 classes.
+
+**Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-i, --input` | — | Dataset name (subfolder under `subtrees/`) |
 
 ## Architecture
 

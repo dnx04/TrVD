@@ -18,7 +18,7 @@ from src.clean_gadget import clean_gadget
 
 def normalization(source):
     nor_code = []
-    for fun in tqdm(source["code"], desc=f"Normalizing"):
+    for fun in tqdm(source["code"], desc="Normalizing"):
         lines = fun.split("\n")
         code = ""
         for line in lines:

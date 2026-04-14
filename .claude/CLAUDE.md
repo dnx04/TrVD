@@ -21,11 +21,11 @@ uv run python scripts/split_dataset.py -i dataset/dataset.pkl -o ./dataset/trvd
 # Preprocess: AST parsing, Word2Vec training, block sequence generation
 uv run python -m src.pipeline --input trvd --output subtrees
 
-# Train model
-uv run python -m scripts.train
+# Train model (--epochs and --patience available)
+uv run python -m scripts.train -i trvd
 
 # Evaluate on test set
-uv run python scripts/evaluation.py
+uv run python -m scripts.evaluation -i trvd
 
 # Normalize raw source code (if starting from raw data)
 uv run python -m src.normalization -i ./dataset/trvd -o ./dataset/trvd
