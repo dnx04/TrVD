@@ -182,7 +182,7 @@ class BatchProgramClassifier(nn.Module):
             vocab_size, embedding_dim, encode_dim, batch_size, use_gpu, device, pretrained_weight
         )
         self.root2label = nn.Linear(encode_dim, label_size)
-        self.encoder_layer = nn.TransformerEncoderLayer(d_model=encode_dim, nhead=4)
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=encode_dim, nhead=4, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=2)
         self.transformerout2label = nn.Linear(encode_dim, label_size)
         self.dropout = nn.Dropout(0.2)
