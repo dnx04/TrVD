@@ -4,7 +4,7 @@ TrVD exposes indicative semantics deeply embedded in source code fragments for a
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - NVIDIA GPU with CUDA 12.6 (e.g., H100, A100)
 - NVIDIA Driver >= 535
 
@@ -27,61 +27,68 @@ uv run python -c "import torch; print(torch.cuda.is_available()); print(torch.cu
 
 The project uses the [SARD dataset](https://samate.nist.gov/SRD/index.php) — 264,822 C/C++ functions with 86 vulnerability classes (85 vulnerable types + 1 benign).
 
-Place your dataset pickle files at:
+A merged dataset is available at `dataset/dataset.pkl`. Use `scripts/split_dataset.py` to split it into train/val/test.
+
+### Split the Dataset
+
+```bash
+uv run python scripts/split_dataset.py -i dataset/dataset.pkl -o ./dataset/trvd
 ```
-dataset/
-  train.pkl    # training set
-  val.pkl       # validation set
-  test.pkl      # test set
+
+This produces stratified splits at 80/10/10 (seed: 220703):
+```
+dataset/trvd/
+  train.pkl    # ~211,857 samples
+  val.pkl      # ~26,482 samples
+  test.pkl     # ~26,483 samples
+```
+
+### Normalize the Dataset
+
+If starting from raw (non-normalized) source code:
+
+```bash
+uv run python -m src.normalization -i ./dataset/trvd -o ./dataset/trvd
 ```
 
 Each pickle contains a DataFrame with columns:
 - `code`: normalized C/C++ source code (string)
 - `label`: integer 0–85 (0 = benign, 1–85 = CWE types)
 
-A merged dataset is available at `dataset/dataset.pkl`.
-
 ### CWE Label Reference
 
-See [cwe_labels.csv](cwe_labels.csv) for the mapping of label numbers to CWE types and sample counts.
+See [cwe_labels.csv](dataset/cwe_labels.csv) for the mapping of label numbers to CWE types and sample counts.
 
 ## Pipeline
 
-### Step 1: Normalize Code
-
-Preprocess raw source code by removing comments, string/char literals, and normalizing identifiers.
+Preprocesses normalized code: parses into ASTs, decomposes into sub-trees, trains Word2Vec embeddings, and generates block sequences.
 
 ```bash
-uv run python normalization.py
-```
-
-### Step 2: AST Decomposition
-
-Parse normalized code into ASTs, decompose into sub-trees of max depth 8 and max size 40, train Word2Vec embeddings, and generate block sequences.
-
-```bash
-uv run python pipeline.py
+uv run python -m src.pipeline --input trvd --output subtrees/trvd
 ```
 
 This produces:
-- `subtrees/trvd/node_w2v_128` — trained Word2Vec model
-- `subtrees/trvd/train_block.pkl` — training block sequences
-- `subtrees/trvd/dev_block.pkl` — validation block sequences
-- `subtrees/trvd/test_block.pkl` — test block sequences
-
-### Step 3: Train
-
-Train the TrVD model (Tree RNN + Transformer encoder) on the block sequences.
-
-```bash
-uv run python train.py
+```
+subtrees/trvd/
+  node_w2v_128      # trained Word2Vec model
+  train_block.pkl   # training block sequences
+  dev_block.pkl     # validation block sequences
+  test_block.pkl    # test block sequences
 ```
 
-Checkpoints saved to:
-- `saved_model/trvd/rvnn-att/model_<epoch>.pt` — per-epoch snapshots
-- `saved_model/best_trvd.pt` — best validation model
+**Arguments:**
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-i, --input` | `trvd` | Dataset folder under `dataset/` |
+| `-o, --output` | `subtrees` | Output folder for artifacts |
 
-#### Training Arguments
+## Train
+
+```bash
+uv run python scripts/train.py
+```
+
+**Arguments:**
 
 | Argument | Default | Description |
 |----------|---------|-------------|
@@ -89,12 +96,14 @@ Checkpoints saved to:
 | `-m, --model` | `rvnn-att` | Model type |
 | `-d, --device` | `cuda` | Device (`cuda`, `cuda:1`, `cuda:2`, or `cpu`) |
 
-### Step 4: Evaluate
+Checkpoints saved to:
+- `saved_model/trvd/rvnn-att/model_<epoch>.pt` — per-epoch snapshots
+- `saved_model/best_trvd.pt` — best validation model
 
-Evaluate the trained model on the test set.
+## Evaluate
 
 ```bash
-uv run python evaluation.py
+uv run python scripts/evaluation.py
 ```
 
 Outputs accuracy, precision, recall, and F1-score across all 86 classes.
@@ -105,28 +114,28 @@ Outputs accuracy, precision, recall, and F1-score across all 86 classes.
 Raw Code
   │
   ▼
-Code Normalization      (normalization.py)
-  │                     Strips comments, literals, normalizes identifiers
+Code Normalization          (src/normalization.py)
+  │                         Strips comments, literals, normalizes identifiers
   ▼
-AST Parsing             (pipeline.py / tree-sitter)
-  │                     Parses C/C++ into abstract syntax trees
+AST Parsing                 (src/pipeline.py + tree-sitter-cpp)
+  │                         Parses C/C++ into abstract syntax trees
   ▼
-AST Decomposition       (prepare_data.py)
-  │                     Splits AST into sub-trees (depth≤8, size≤40)
+AST Decomposition           (src/prepare_data.py)
+  │                         Splits AST into sub-trees (depth≤8, size≤40)
   ▼
-Word2Vec Embedding      (gensim / pipeline.py)
-  │                     Trains token embeddings from root-to-leaf paths
+Word2Vec Embedding          (src/pipeline.py + gensim)
+  │                         Trains token embeddings from root-to-leaf paths
   ▼
-Tree RNN Encoder        (model.py / BatchTreeEncoder)
-  │                     Encodes each sub-tree into a fixed-dim vector (GRU)
+Tree RNN Encoder            (src/model.py / BatchTreeEncoder)
+  │                         Encodes each sub-tree into a fixed-dim vector (GRU + attention)
   ▼
-Transformer Encoder     (model.py / nn.TransformerEncoder)
-  │                     Captures long-range relationships among sub-trees
+Transformer Encoder         (src/model.py / nn.TransformerEncoder)
+  │                         Captures long-range relationships among sub-trees
   ▼
-Max Pooling + FC        (model.py / BatchProgramClassifier)
+Max Pooling + FC            (src/model.py / BatchProgramClassifier)
   │
   ▼
-86-class Classification  (vulnerability type or benign)
+86-class Classification     (vulnerability type or benign)
 ```
 
 ## Key Hyperparameters
@@ -135,7 +144,7 @@ Max Pooling + FC        (model.py / BatchProgramClassifier)
 |-----------|-------|
 | Word2Vec embedding size | 128 |
 | Sub-tree encode dimension | 128 |
-| LSTM hidden dimension | 100 |
+| GRU hidden dimension | 100 |
 | Transformer attention heads | 4 |
 | Transformer layers | 2 |
 | Batch size | 32 (train), 100 (eval) |
@@ -143,6 +152,31 @@ Max Pooling + FC        (model.py / BatchProgramClassifier)
 | Max sub-tree depth | 8 |
 | Max sub-tree size | 40 |
 | Dropout | 0.2 |
+
+## Project Structure
+
+```
+.
+├── src/                    # Core library
+│   ├── __init__.py
+│   ├── clean_gadget.py    # Identifier normalization (VAR_i, FUN_i)
+│   ├── model.py           # BatchTreeEncoder + BatchProgramClassifier
+│   ├── normalization.py    # Code normalization script
+│   ├── pipeline.py        # AST parsing, Word2Vec, block sequence generation
+│   ├── prepare_data.py    # AST decomposition (get_blocks, get_root_paths)
+│   └── tree.py            # ASTNode, SingleNode wrappers
+├── scripts/
+│   ├── train.py           # Training entry point
+│   ├── evaluation.py      # Evaluation entry point
+│   └── split_dataset.py   # Stratified dataset splitter
+├── dataset/
+│   ├── dataset.pkl        # Raw combined dataset
+│   ├── cwe_labels.csv     # Label → CWE mapping
+│   └── trvd/              # Split output (from split_dataset.py)
+├── build_languages/        # (removed — tree-sitter-cpp installed via pip)
+└── docs/
+    └── TrVD.md            # Paper reference
+```
 
 ## Performance
 
@@ -155,6 +189,5 @@ The model classifies C/C++ functions into 86 vulnerability classes including:
 
 ## References
 
-- Paper: [TrVD: Deep Semantic Extraction via AST Decomposition for Vulnerability Detection](docs/TrVD.pdf)
+- Paper: [docs/TrVD.md](docs/TrVD.md)
 - Dataset: [NIST SARD](https://samate.nist.gov/SRD/index.php)
-- Tree-sitter: [tree-sitter-c](languages/tree-sitter-c), [tree-sitter-cpp](languages/tree-sitter-cpp)

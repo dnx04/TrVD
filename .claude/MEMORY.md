@@ -1,0 +1,1 @@
+- [context7-usage](memory/context7-usage.md) — always check Context7 docs for library APIs
