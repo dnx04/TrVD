@@ -97,6 +97,8 @@ uv run python -m scripts.train -i trvd
 | `-d, --device` | `cuda` | Device |
 | `-e, --epochs` | `100` | Number of training epochs |
 | `-p, --patience` | `5` | Early stopping patience |
+| `-b, --batch-size` | `64` | Batch size |
+| `-w, --workers` | `4` | DataLoader workers |
 
 Checkpoints saved to:
 - `saved_model/trvd/rvnn-att/model_<epoch>.pt` — per-epoch snapshots

@@ -3,6 +3,7 @@ import os
 
 import pandas as pd
 import torch
+from torch.utils.data import DataLoader
 import time
 import numpy as np
 from sklearn.metrics import precision_score, recall_score, f1_score
@@ -22,17 +23,33 @@ def parse_options():
                         help='Number of training epochs (default: 100)', type=int)
     parser.add_argument('-p', '--patience', default=5,
                         help='Early stopping patience (default: 5)', type=int)
+    parser.add_argument('-b', '--batch-size', default=64,
+                        help='Batch size (default: 64)', type=int)
+    parser.add_argument('-w', '--workers', default=4,
+                        help='DataLoader workers (default: 4)', type=int)
     args = parser.parse_args()
     return args
 
 
-def get_batch(dataset, idx, bs):
-    tmp = dataset.iloc[idx: idx + bs]
-    data, labels = [], []
-    for _, item in tmp.iterrows():
-        data.append(item['code'])
-        labels.append(item['label'])
-    return data, torch.LongTensor(labels)
+def collate_batch(batch):
+    """Collate a batch of (code, label) tuples. Code is a list of block sequences (list of lists)."""
+    data = [item[0] for item in batch]
+    labels = torch.LongTensor([item[1] for item in batch])
+    return data, labels
+
+
+class BlockDataset(torch.utils.data.Dataset):
+    """Wraps a preprocessed DataFrame for DataLoader use."""
+
+    def __init__(self, df: pd.DataFrame):
+        self.data = df.reset_index(drop=True)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        row = self.data.iloc[idx]
+        return row['code'], row['label']
 
 
 if __name__ == '__main__':
@@ -61,6 +78,18 @@ if __name__ == '__main__':
     device = torch.device("cuda")
     print(device)
     print('dataset:', args.input)
+    BATCH_SIZE = args.batch_size
+    print('batch size:', BATCH_SIZE)
+
+    train_dataset = BlockDataset(train_data)
+    val_dataset = BlockDataset(val_data)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+                              num_workers=args.workers, collate_fn=collate_batch,
+                              pin_memory=True, persistent_workers=args.workers > 0)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
+                            num_workers=args.workers, collate_fn=collate_batch,
+                            pin_memory=True, persistent_workers=args.workers > 0)
+
     model = BatchProgramClassifier(EMBEDDING_DIM, MAX_TOKENS + 1, ENCODE_DIM, LABELS, BATCH_SIZE,
                                     device, USE_GPU, embeddings)
 
@@ -86,22 +115,17 @@ if __name__ == '__main__':
     patience_counter = 0
     print('Start training...')
     # training procedure
-    num_batches = (len(train_data) + BATCH_SIZE - 1) // BATCH_SIZE
     for epoch in range(EPOCHS):
         start_time = time.time()
         total_acc = torch.tensor(0.0).to(device)
         total_loss = 0.0
         total = 0.0
         model.train()
-        pbar = tqdm(range(0, len(train_data), BATCH_SIZE), desc=f"Epoch {epoch+1}/{EPOCHS}", leave=False)
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS}", leave=False)
         all_train_preds = []
         all_train_labels = []
-        for i in pbar:
-            train_inputs, train_labels = get_batch(train_data, i, BATCH_SIZE)
-            if USE_GPU:
-                train_inputs, train_labels = train_inputs, train_labels.to(device)
-            if len(train_labels) < BATCH_SIZE:
-                break
+        for train_inputs, train_labels in pbar:
+            train_labels = train_labels.to(device)
             model.zero_grad()
             model.batch_size = len(train_labels)
             output = model(train_inputs)
@@ -126,7 +150,7 @@ if __name__ == '__main__':
         print('| end of epoch {:3d} / {:3d} | time: {:5.2f}s | train loss {:5.2f} | train acc {:5.2f} | train prec {:5.2f} | train rec {:5.2f} | train f1 {:5.2f} | lr {:.8f}'
               .format(epoch+1, EPOCHS, (time.time() - start_time), total_loss / total, train_acc, train_prec, train_rec, train_f1, scheduler.get_lr()[0]))
 
-        if val_data is not None:
+        if val_dataset is not None:
             end_time = time.time()
             all_labels = []
             all_preds = []
@@ -134,14 +158,8 @@ if __name__ == '__main__':
             total_loss = 0.0
             total = 0.0
             model.eval()
-            for i in tqdm(range(0, len(val_data), BATCH_SIZE), desc="Val", leave=False):
-                test_inputs, test_labels = get_batch(val_data, i, BATCH_SIZE)
-                if USE_GPU:
-                    test_inputs, test_labels = test_inputs, test_labels.to(device)
-
-                if len(test_labels) < BATCH_SIZE:
-                    break
-
+            for test_inputs, test_labels in tqdm(val_loader, desc="Val", leave=False):
+                test_labels = test_labels.to(device)
                 model.batch_size = len(test_labels)
                 output = model(test_inputs)
 
