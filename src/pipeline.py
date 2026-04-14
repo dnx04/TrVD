@@ -112,14 +112,15 @@ class Pipeline:
         from src.prepare_data import get_blocks as func
         from gensim.models.word2vec import Word2Vec
         word2vec = Word2Vec.load(self.w2v_path).wv
-        vocab = word2vec.vocab
+        key_to_index = word2vec.key_to_index
         max_token = word2vec.vectors.shape[0]
 
         def tree_to_index(node):
             token = node.token
-            if type(token) is bytes:
+            if isinstance(token, bytes):
                 token = token.decode('utf-8')
-            result = [vocab[token].index if token in vocab else max_token]
+            idx = key_to_index.get(str(token), max_token)  # type: ignore[arg-type]
+            result = [idx]
             children = node.children
             for child in children:
                 result.append(tree_to_index(child))
