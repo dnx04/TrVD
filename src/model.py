@@ -62,6 +62,10 @@ class BatchTreeEncoder(nn.Module):
     def _pad_trees(self, trees: list) -> tuple[torch.Tensor, torch.Tensor]:
         """Pad all trees to [num_trees, MAX_DEPTH, MAX_SIZE] tensors.
 
+        Each tree is a flat pre-order list: [token, child1, child2, ..., -1, sibling, ...]
+        -1 is the end-of-subtree marker. Children of node N occupy positions right after N,
+        in the same depth row, until the -1 that closes that subtree.
+
         Returns:
             tokens: [num_trees, MAX_DEPTH, MAX_SIZE] — token indices
             masks: [num_trees, MAX_DEPTH, MAX_SIZE] — True where valid
@@ -72,27 +76,28 @@ class BatchTreeEncoder(nn.Module):
         masks = torch.zeros((num_trees, self.MAX_DEPTH, self.MAX_SIZE),
                              dtype=torch.bool, device=self.device)
 
-        # Process each tree independently (this is cheap — MAX_SIZE=40, MAX_DEPTH=8)
         for t, tree in enumerate(trees):
-            def fill(node: list, d: int) -> int:
+            pos = 0  # position in flat token list
+
+            def fill(d: int) -> int:
+                nonlocal pos
                 if d >= self.MAX_DEPTH:
                     return 0
                 idx = 0
-                i = 0
-                while i < len(node) and idx < self.MAX_SIZE:
-                    if node[i][0] == -1:
-                        i += 1
-                        continue
-                    tokens[t, d, idx] = node[i][0]
+                while idx < self.MAX_SIZE and pos < len(tree):
+                    tok = tree[pos]
+                    pos += 1
+                    if tok == -1:
+                        break
+                    tokens[t, d, idx] = tok
                     masks[t, d, idx] = True
-                    if len(node[i]) > 1:
-                        n = fill(node[i][1:], d + 1)
+                    if d + 1 < self.MAX_DEPTH:
+                        n = fill(d + 1)
                         idx += n
                     idx += 1
-                    i += 1
                 return idx
 
-            fill(tree, 0)
+            fill(0)
 
         return tokens, masks
 
@@ -117,69 +122,47 @@ class BatchTreeEncoder(nn.Module):
         # Bottom-up: process each depth level
         for d in range(depth - 1, -1, -1):
             level_mask = masks[:, d, :]       # [B, S]
-            level_tokens = tokens[:, d, :]    # [B, S]
+            level_tokens = tokens[:, d, :]   # [B, S]
+            valid = level_mask & (level_tokens >= 0)  # [B, S]
 
-            # Valid nodes (not padding, not special)
-            valid = level_mask & (level_tokens >= 0)   # [B, S]
+            # Start with token embeddings
+            h_d = token_emb[:, d, :, :]      # [B, S, E]
 
-            # Node embeddings: start with token embeddings
-            h = token_emb  # [B, D, S, E]
-
-            # For non-leaf nodes, aggregate children from level d+1
             if d < depth - 1:
-                child_h = node_hiddens[:, d + 1, :, :]   # [B, S, H]
-                child_masks = masks[:, d + 1, :]          # [B, S]
+                child_h = node_hiddens[:, d + 1, :, :]  # [B, S, H]
+                child_masks = masks[:, d + 1, :]         # [B, S]
 
-                # Count valid children per node per tree
-                n_children = child_masks.sum(dim=1)        # [B]
+                # Count valid children per tree (all nodes at child level)
+                n_children = child_masks.sum(dim=1).clamp(min=1)  # [B]
 
-                # Batched child aggregation: for each (b, s) that is a valid node
-                # child embeddings are at (b, d+1, 0..n_children[b]-1)
-                # We use index_copy to place child sums at the correct node positions
-
-                # Sum child hiddens for each node
-                child_sums = torch.zeros(num_trees, size, self.encode_dim, device=self.device)
+                # For each tree, children are packed at cols 0..n_children[b]-1
+                # child_sums[b, c, :] = child_h[b, c, :] for c < n_children[b]
+                child_sums = torch.zeros_like(h_d)
                 for b in range(num_trees):
                     nc = n_children[b].item()
-                    if nc > 0:
-                        child_sums[b, :nc] = child_h[b, :nc]
+                    child_sums[b, :nc] = child_h[b, :nc]
 
-                # Mask out padding positions
                 child_sums = child_sums * valid.unsqueeze(-1).float()
 
                 # Gating: combine token emb with child sum
                 gate = torch.sigmoid(
-                    torch.mm(h[:, d, :, :].reshape(num_trees * size, self.encode_dim),
-                             self.context_weight).reshape(num_trees, size, self.encode_dim)
+                    torch.mm(h_d.reshape(num_trees * size, self.encode_dim), self.context_weight)
+                    .reshape(num_trees, size, self.encode_dim)
                 )
-                h_d = h[:, d, :, :] + gate * child_sums
+                h_d = h_d + gate * child_sums
 
-                # Apply attention over children for nodes that have them
-                # child_h: [B, S, H] — last-level embeddings for each node's children
-                # h_d: [B, S, H] — updated node embeddings after child aggregation
-                if d < depth - 1:
-                    # h_d.view(B*S, H)
-                    hs = h_d.reshape(num_trees * size, self.encode_dim)
-                    attn = torch.mm(hs, self.context_weight)   # [B*S, 1]
-                    attn = attn.reshape(num_trees, size)
-                    attn = F.softmax(attn.masked_fill(~valid, float('-inf')), dim=1)
-                    attn_sum = (h_d * attn.unsqueeze(-1)).sum(dim=1)   # [B, H]
-                else:
-                    attn_sum = h_d.sum(dim=1)  # fallback
+                # Attention across positions within each tree
+                attn = torch.mm(h_d.reshape(num_trees * size, self.encode_dim), self.context_weight)  # [B*S, 1]
+                attn = attn.reshape(num_trees, size)
+                attn = F.softmax(attn.masked_fill(~valid, float('-inf')), dim=1)
+                h_d = (h_d * attn.unsqueeze(-1)).sum(dim=1)  # [B, H]
 
-                # Scatter back to node_hiddens
-                for b in range(num_trees):
-                    valid_nodes = valid[b].nonzero(as_tuple=True)[0]
-                    for idx in valid_nodes:
-                        node_hiddens[b, d, idx] = attn_sum[b]
+                # Scatter back: each valid node at (d, idx) gets h_d[b]
+                node_hiddens[:, d, :, :] = h_d.unsqueeze(1)
             else:
-                # Leaf level: just use token embeddings
-                h_d = h[:, d, :, :]
-                attn_sum = (h_d * valid.unsqueeze(-1).float()).sum(dim=1)  # [B, H]
-                for b in range(num_trees):
-                    valid_nodes = valid[b].nonzero(as_tuple=True)[0]
-                    for idx in valid_nodes:
-                        node_hiddens[b, d, idx] = attn_sum[b]
+                # Leaf level: sum valid token embeddings
+                h_d = (h_d * valid.unsqueeze(-1).float()).sum(dim=1)  # [B, H]
+                node_hiddens[:, d, :, :] = h_d.unsqueeze(1)
 
         # Root is depth=0, position=0 for each tree
         roots = node_hiddens[:, 0, 0, :]   # [num_trees, encode_dim]
