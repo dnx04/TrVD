@@ -64,7 +64,7 @@ See [cwe_labels.csv](dataset/cwe_labels.csv) for the mapping of label numbers to
 Preprocesses normalized code: parses into ASTs, decomposes into sub-trees, trains Word2Vec embeddings, and generates block sequences.
 
 ```bash
-uv run python -m src.pipeline --input trvd --output subtrees/trvd
+uv run python -m src.pipeline --input trvd --output subtrees
 ```
 
 This produces:

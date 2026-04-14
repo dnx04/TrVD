@@ -69,9 +69,9 @@ class Pipeline:
         self.size = size
         trees = self.train
         assert trees is not None, "parse_source() must be called before dictionary_and_embedding()"
-        self.w2v_path = os.path.join(args.output, args.input, 'node_w2v_' + str(size))
-        if not os.path.exists(os.path.join(args.output, args.input)):
-            os.makedirs(os.path.join(args.output, args.input), exist_ok=True)
+        self.w2v_path = os.path.join(args.output, 'node_w2v_' + str(size))
+        if not os.path.exists(args.output):
+            os.makedirs(args.output, exist_ok=True)
         from src.prepare_data import get_sequences
         def trans_to_sequences(ast):
             sequence = []
@@ -103,11 +103,11 @@ class Pipeline:
     def generate_block_seqs(self, data, name: str) -> pd.DataFrame:
         blocks_path: str
         if name == 'train':
-            blocks_path = os.path.join(args.output, args.input, 'train_block.pkl')
+            blocks_path = os.path.join(args.output, 'train_block.pkl')
         elif name == 'test':
-            blocks_path = os.path.join(args.output, args.input, 'test_block.pkl')
+            blocks_path = os.path.join(args.output, 'test_block.pkl')
         else:
-            blocks_path = os.path.join(args.output, args.input, 'dev_block.pkl')
+            blocks_path = os.path.join(args.output, 'dev_block.pkl')
 
         from src.prepare_data import get_blocks as func
         from gensim.models.word2vec import Word2Vec

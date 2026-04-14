@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 import time
 import numpy as np
+from sklearn.metrics import precision_score, recall_score, f1_score
 from gensim.models.word2vec import Word2Vec
 from tqdm import tqdm
 from src.model import BatchProgramClassifier
@@ -12,11 +13,15 @@ from src.model import BatchProgramClassifier
 def parse_options():
     parser = argparse.ArgumentParser(description='TrVD training.')
     parser.add_argument('-i', '--input', default='trvd',
-                        help='Dataset name (subfolder under subtrees/)', type=str, required=True)
+                        help='Dataset name (subfolder under subtrees/)', type=str)
     parser.add_argument('-m', '--model', default='rvnn-att', choices=['rvnn-att'],
                         type=str, required=False, help='sub-tree model type')
     parser.add_argument('-d', '--device', default='cuda', choices=['cuda', 'cpu'],
                         type=str, required=False, help='Device (default: cuda)')
+    parser.add_argument('-e', '--epochs', default=100,
+                        help='Number of training epochs (default: 100)', type=int)
+    parser.add_argument('-p', '--patience', default=5,
+                        help='Early stopping patience (default: 5)', type=int)
     args = parser.parse_args()
     return args
 
@@ -48,7 +53,7 @@ if __name__ == '__main__':
 
     ENCODE_DIM = 128
     LABELS = 86
-    EPOCHS = 100
+    EPOCHS = args.epochs
     BATCH_SIZE = 32
     USE_GPU = True
     MAX_TOKENS = word2vec.vectors.shape[0]
@@ -78,6 +83,7 @@ if __name__ == '__main__':
     train_acc_ = []
     val_acc_ = []
     best_acc = 0.0
+    patience_counter = 0
     print('Start training...')
     # training procedure
     num_batches = (len(train_data) + BATCH_SIZE - 1) // BATCH_SIZE
@@ -88,6 +94,8 @@ if __name__ == '__main__':
         total = 0.0
         model.train()
         pbar = tqdm(range(0, len(train_data), BATCH_SIZE), desc=f"Epoch {epoch+1}/{EPOCHS}", leave=False)
+        all_train_preds = []
+        all_train_labels = []
         for i in pbar:
             train_inputs, train_labels = get_batch(train_data, i, BATCH_SIZE)
             if USE_GPU:
@@ -103,14 +111,20 @@ if __name__ == '__main__':
             # calc training acc
             _, predicted = torch.max(output.data, 1)
             total_acc += (predicted == train_labels).sum()
+            all_train_preds += predicted.tolist()
+            all_train_labels += train_labels.tolist()
             total += len(train_labels)
             total_loss += loss.item() * len(train_inputs)
 
         train_loss_.append(total_loss / total)
         train_acc_.append(total_acc.item() / total)
+        train_acc = total_acc.item() / total
+        train_prec = precision_score(all_train_labels, all_train_preds, average='weighted', zero_division=0)
+        train_rec = recall_score(all_train_labels, all_train_preds, average='weighted', zero_division=0)
+        train_f1 = f1_score(all_train_labels, all_train_preds, average='weighted', zero_division=0)
         print('-' * 89)
-        print('| end of epoch {:3d} / {:3d} | time: {:5.2f}s | train loss {:5.2f} | ''train acc {:5.2f} | lr {:.8f}'
-              .format(epoch+1, EPOCHS, (time.time() - start_time), total_loss / total, total_acc.item() / total, scheduler.get_lr()[0]))
+        print('| end of epoch {:3d} / {:3d} | time: {:5.2f}s | train loss {:5.2f} | train acc {:5.2f} | train prec {:5.2f} | train rec {:5.2f} | train f1 {:5.2f} | lr {:.8f}'
+              .format(epoch+1, EPOCHS, (time.time() - start_time), total_loss / total, train_acc, train_prec, train_rec, train_f1, scheduler.get_lr()[0]))
 
         if val_data is not None:
             end_time = time.time()
@@ -120,7 +134,7 @@ if __name__ == '__main__':
             total_loss = 0.0
             total = 0.0
             model.eval()
-            for i in tqdm(range(0, len(val_data), BATCH_SIZE), desc=f"Val", leave=False):
+            for i in tqdm(range(0, len(val_data), BATCH_SIZE), desc="Val", leave=False):
                 test_inputs, test_labels = get_batch(val_data, i, BATCH_SIZE)
                 if USE_GPU:
                     test_inputs, test_labels = test_inputs, test_labels.to(device)
@@ -140,18 +154,27 @@ if __name__ == '__main__':
                 total += len(test_labels)
                 total_loss += loss.item() * len(test_inputs)
 
-            from scripts.evaluation import evaluate_multi
-            evaluate_multi(all_preds, all_labels)
-
             torch.save(model.state_dict(), model_path + '/model_'+str(epoch+1)+'.pt')
-            if total_acc.item() / total > best_acc:
-                best_acc = total_acc.item() / total
+            current_val_acc = total_acc.item() / total
+            current_val_prec = precision_score(all_labels, all_preds, average='weighted', zero_division=0)
+            current_val_rec = recall_score(all_labels, all_preds, average='weighted', zero_division=0)
+            current_val_f1 = f1_score(all_labels, all_preds, average='weighted', zero_division=0)
+            if current_val_acc > best_acc:
+                best_acc = current_val_acc
+                patience_counter = 0
                 print('saving best model')
                 torch.save(model.state_dict(), best_model)
-            print('| end of epoch {:3d} / {:3d} | time: {:5.2f}s | val loss {:5.2f} | val acc {:5.2f}'
-                  .format(epoch + 1, EPOCHS, (time.time() - end_time), total_loss / total, total_acc.item() / total))
+            else:
+                patience_counter += 1
+            print('| end of epoch {:3d} / {:3d} | time: {:5.2f}s | val loss {:5.2f} | val acc {:5.2f} | val prec {:5.2f} | val rec {:5.2f} | val f1 {:5.2f}'
+                  .format(epoch + 1, EPOCHS, (time.time() - end_time), total_loss / total, current_val_acc, current_val_prec, current_val_rec, current_val_f1))
             print('-' * 89)
             scheduler.step()
+            if patience_counter >= args.patience:
+                print('-' * 89)
+                print(f'Early stopping triggered after {epoch + 1} epochs (no improvement for {args.patience} epochs)')
+                print('-' * 89)
+                break
 
 
 

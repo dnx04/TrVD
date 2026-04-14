@@ -19,7 +19,7 @@ uv run python -c "import torch; print(torch.cuda.is_available()); print(torch.cu
 uv run python scripts/split_dataset.py -i dataset/dataset.pkl -o ./dataset/trvd
 
 # Preprocess: AST parsing, Word2Vec training, block sequence generation
-uv run python -m src.pipeline --input trvd --output subtrees/trvd
+uv run python -m src.pipeline --input trvd --output subtrees
 
 # Train model
 uv run python -m scripts.train
